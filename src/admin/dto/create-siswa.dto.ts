@@ -1,4 +1,10 @@
-import { IsNotEmpty, IsString } from 'class-validator';
+import {
+  IsInt,
+  IsNotEmpty,
+  IsOptional,
+  IsPositive,
+  IsString,
+} from 'class-validator';
 
 export class CreateSiswaDto {
   @IsString()
@@ -9,7 +15,13 @@ export class CreateSiswaDto {
   @IsNotEmpty()
   nis!: string;
 
+  @IsOptional()
+  @IsInt()
+  @IsPositive()
+  kelasId?: number;
+
+  @IsOptional()
   @IsString()
   @IsNotEmpty()
-  kelas!: string;
+  kelas?: string;
 }

@@ -34,9 +34,13 @@ terlebih dahulu melalui `POST /api/login`, lalu kirim token sebagai
 
 - `POST /api/admin/guru` menerima `namalengkap`, `nip`, dan `jurusan`
   (`RPL`, `TKJ`, atau `MM`).
-- `POST /api/admin/siswa` menerima `nama`, `nis`, dan `kelas`.
+- `GET /api/admin/kelas`, `POST /api/admin/kelas`, `PATCH /api/admin/kelas/:id`,
+  dan `DELETE /api/admin/kelas/:id` mengelola master data kelas siswa. Kelas
+  yang masih dipakai siswa tidak dapat dihapus.
+- `POST /api/admin/siswa` menerima `nama`, `nis`, dan `kelasId` (atau `kelas`
+  sebagai nama kelas yang sudah terdaftar di master data).
 - `PATCH /api/admin/siswa/:id` hanya mengedit profil siswa dengan body
-  `namalengkap`, `nis`, dan/atau `kelas`.
+  `namalengkap`, `nis`, `kelasId`, dan/atau `kelas`.
 - `PATCH /api/admin/siswa/:id/status` mengubah status siswa; pilihan yang
   diterima `BELUM_MAGANG`, `SEDANG_MAGANG`, atau `LULUS`.
 - `PATCH /api/admin/penempatan/:id` digunakan untuk plotting pertama maupun

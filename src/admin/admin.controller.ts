@@ -11,7 +11,7 @@ import {
   Request,
   UseGuards,
 } from '@nestjs/common';
-import { Role } from '@prisma/client';
+import { Jurusan, Role } from '@prisma/client';
 import {
   ApiBearerAuth,
   ApiOperation,
@@ -29,6 +29,8 @@ import { CreateGuruDto } from './dto/create-guru.dto';
 import { UpdateGuruDto } from './dto/update-guru.dto';
 import { UpdateStatusGuruDto } from './dto/update-status-guru.dto';
 import { CreateSiswaDto } from './dto/create-siswa.dto';
+import { CreateKelasDto } from './dto/create-kelas.dto';
+import { UpdateKelasDto } from './dto/update-kelas.dto';
 import { UpdateSiswaDto } from './dto/update-siswa.dto';
 import { UpdateStatusSiswaDto } from './dto/update-status-siswa.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
@@ -62,6 +64,46 @@ export class AdminController {
   @ApiOperation({ summary: 'Admin monitoring kunjungan: menampilkan data kunjungan semua guru (tanggal, guru pembimbing, tempat magang, catatan kunjungan)' })
   getMonitoringKunjungan() {
     return this.adminService.getMonitoringKunjungan();
+  }
+
+  @Get('admin/kelas')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.ADMIN, Role.SUPER_ADMIN)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Admin melihat master data kelas siswa' })
+  @ApiQuery({ name: 'jurusan', required: false, enum: ['RPL', 'TKJ', 'MM'], description: 'Filter berdasarkan jurusan' })
+  findAllKelas(@Query('jurusan') jurusan?: Jurusan) {
+    return this.adminService.findAllKelas(jurusan);
+  }
+
+  @Post('admin/kelas')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.ADMIN, Role.SUPER_ADMIN)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Admin menambahkan master data kelas siswa' })
+  createKelas(@Body() dto: CreateKelasDto) {
+    return this.adminService.createKelas(dto);
+  }
+
+  @Patch('admin/kelas/:id')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.ADMIN, Role.SUPER_ADMIN)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Admin mengedit master data kelas siswa' })
+  updateKelas(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: UpdateKelasDto,
+  ) {
+    return this.adminService.updateKelas(id, dto);
+  }
+
+  @Delete('admin/kelas/:id')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.ADMIN, Role.SUPER_ADMIN)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Admin menghapus master data kelas siswa' })
+  deleteKelas(@Param('id', ParseIntPipe) id: number) {
+    return this.adminService.deleteKelas(id);
   }
 
   @Get('admin/pengajuan-magang')

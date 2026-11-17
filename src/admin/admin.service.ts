@@ -9,6 +9,8 @@ import * as bcrypt from 'bcryptjs';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateGuruDto } from './dto/create-guru.dto';
 import { CreateSiswaDto } from './dto/create-siswa.dto';
+import { CreateKelasDto } from './dto/create-kelas.dto';
+import { UpdateKelasDto } from './dto/update-kelas.dto';
 import { CreateDudiDto } from './dto/create-dudi.dto';
 import { UpdateGuruDto } from './dto/update-guru.dto';
 import { UpdateSiswaDto } from './dto/update-siswa.dto';
@@ -45,6 +47,110 @@ export interface RegisterResponseDto<T> {
 @Injectable()
 export class AdminService {
   constructor(private readonly prisma: PrismaService) {}
+
+  private async resolveKelasRef(input: {
+    kelasId?: number;
+    kelas?: string;
+  }): Promise<{ kelasId: number; kelas: string }> {
+    const nama = input.kelas?.trim();
+    if (input.kelasId === undefined && !nama) {
+      throw new BadRequestException('Kelas wajib dipilih');
+    }
+
+    const kelas = input.kelasId
+      ? await this.prisma.kelas.findUnique({ where: { id: input.kelasId } })
+      : await this.prisma.kelas.findUnique({ where: { nama: nama as string } });
+
+    if (!kelas) {
+      throw new BadRequestException(
+        'Kelas tidak ditemukan atau belum terdaftar di master data',
+      );
+    }
+
+    return { kelasId: kelas.id, kelas: kelas.nama };
+  }
+
+  async findAllKelas(jurusan?: Jurusan) {
+    return this.prisma.kelas.findMany({
+      where: jurusan ? { jurusan } : undefined,
+      orderBy: { nama: 'asc' },
+    });
+  }
+
+  async createKelas(dto: CreateKelasDto) {
+    const nama = dto.nama.trim();
+    if (!nama) throw new BadRequestException('Nama kelas wajib diisi');
+
+    try {
+      const kelas = await this.prisma.kelas.create({
+        data: { nama, jurusan: dto.jurusan },
+      });
+      return { message: 'Kelas berhasil ditambahkan', data: kelas };
+    } catch (error) {
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === 'P2002' &&
+        uniqueConstraintIncludes(error, 'nama')
+      ) {
+        throw new ConflictException('Nama kelas sudah terdaftar');
+      }
+      throw error;
+    }
+  }
+
+  async updateKelas(id: number, dto: UpdateKelasDto) {
+    const kelas = await this.prisma.kelas.findUnique({ where: { id } });
+    if (!kelas) throw new NotFoundException('Kelas tidak ditemukan');
+
+    const nama = dto.nama?.trim();
+    if (dto.nama !== undefined && !nama) {
+      throw new BadRequestException('Nama kelas wajib diisi');
+    }
+
+    try {
+      const updated = await this.prisma.$transaction(async (tx) => {
+        const result = await tx.kelas.update({
+          where: { id },
+          data: {
+            ...(nama && { nama }),
+            ...(dto.jurusan !== undefined && { jurusan: dto.jurusan }),
+          },
+        });
+        if (nama && nama !== kelas.nama) {
+          await tx.siswa.updateMany({
+            where: { kelasId: id },
+            data: { kelas: nama },
+          });
+        }
+        return result;
+      });
+      return { message: 'Data kelas berhasil diperbarui', data: updated };
+    } catch (error) {
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === 'P2002' &&
+        uniqueConstraintIncludes(error, 'nama')
+      ) {
+        throw new ConflictException('Nama kelas sudah terdaftar');
+      }
+      throw error;
+    }
+  }
+
+  async deleteKelas(id: number) {
+    const kelas = await this.prisma.kelas.findUnique({ where: { id } });
+    if (!kelas) throw new NotFoundException('Kelas tidak ditemukan');
+
+    const siswaCount = await this.prisma.siswa.count({ where: { kelasId: id } });
+    if (siswaCount > 0) {
+      throw new BadRequestException(
+        `Kelas masih digunakan oleh ${siswaCount} siswa`,
+      );
+    }
+
+    await this.prisma.kelas.delete({ where: { id } });
+    return { message: 'Kelas berhasil dihapus' };
+  }
 
   async getMonitoringSiswa(kelas?: string) {
     const siswaList = await this.prisma.siswa.findMany({
@@ -209,13 +315,14 @@ export class AdminService {
     }>
   > {
     try {
+      const kelasRef = await this.resolveKelasRef(dto);
       const email = createSchoolEmail(dto.nama);
       const siswa = await this.prisma.siswa.create({
         data: {
           nama: dto.nama,
           email,
           nis: dto.nis,
-          kelas: dto.kelas,
+          ...kelasRef,
           password: await bcrypt.hash(DEFAULT_REGISTER_PASSWORD, 10),
           role: Role.SISWA,
           status: Status.BELUM_MAGANG,
@@ -703,12 +810,16 @@ export class AdminService {
     if (!siswa) throw new NotFoundException('Siswa tidak ditemukan');
 
     try {
+      const kelasRef =
+        dto.kelasId !== undefined || dto.kelas !== undefined
+          ? await this.resolveKelasRef(dto)
+          : null;
       const updated = await this.prisma.siswa.update({
         where: { id },
         data: {
           ...(dto.namalengkap !== undefined && { nama: dto.namalengkap }),
           ...(dto.nis !== undefined && { nis: dto.nis }),
-          ...(dto.kelas !== undefined && { kelas: dto.kelas }),
+          ...(kelasRef && kelasRef),
         },
         select: {
           id: true,

@@ -1,5 +1,5 @@
 
-import { PrismaClient, Role } from '@prisma/client';
+import { Jurusan, PrismaClient, Role } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 
 const prisma = new PrismaClient();
@@ -58,6 +58,27 @@ async function main() {
   });
 
   console.log('Admin kedua berhasil dibuat');
+
+  const kelasSeed: Array<{ nama: string; jurusan: Jurusan }> = [
+    { nama: 'X RPL 1', jurusan: Jurusan.RPL },
+    { nama: 'X RPL 2', jurusan: Jurusan.RPL },
+    { nama: 'XI RPL 1', jurusan: Jurusan.RPL },
+    { nama: 'XI RPL 2', jurusan: Jurusan.RPL },
+    { nama: 'XII RPL 1', jurusan: Jurusan.RPL },
+    { nama: 'XII RPL 2', jurusan: Jurusan.RPL },
+    { nama: 'X TKJ 1', jurusan: Jurusan.TKJ },
+    { nama: 'XI TKJ 1', jurusan: Jurusan.TKJ },
+  ];
+
+  for (const kelas of kelasSeed) {
+    await prisma.kelas.upsert({
+      where: { nama: kelas.nama },
+      update: { jurusan: kelas.jurusan },
+      create: kelas,
+    });
+  }
+
+  console.log('Master kelas berhasil dibuat');
 
   console.log('Seeding selesai!');
 }
