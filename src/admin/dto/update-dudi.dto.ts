@@ -31,4 +31,9 @@ export class UpdateDudiDto {
   @IsString()
   @IsOptional()
   kontak?: string;
+
+  @ApiPropertyOptional({ example: true })
+  @IsBoolean()
+  @IsOptional()
+  isActive?: boolean;
 }

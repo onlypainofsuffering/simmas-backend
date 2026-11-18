@@ -1,4 +1,5 @@
 import {
+  IsBoolean,
   IsInt,
   IsNotEmpty,
   IsOptional,
@@ -24,4 +25,8 @@ export class CreateSiswaDto {
   @IsString()
   @IsNotEmpty()
   kelas?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  isActive?: boolean;
 }

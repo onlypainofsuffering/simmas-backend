@@ -1,7 +1,7 @@
 import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { Role } from '@prisma/client';
-import * as bcrypt from 'bcryptjs';
+import * as bcrypt from 'bcrypt';
 import { PrismaService } from '../prisma/prisma.service';
 import { LoginDto } from './dto/login.dto';
 
@@ -39,12 +39,13 @@ export class AuthService {
         : []),
     ];
 
-    const matches: LoginCandidate[] = [];
-    for (const candidate of candidates) {
-      if (await bcrypt.compare(dto.password, candidate.password)) {
-        matches.push(candidate);
-      }
-    }
+    const comparisonResults = await Promise.all(
+      candidates.map(async candidate => ({
+        candidate,
+        matches: await bcrypt.compare(dto.password, candidate.password),
+      })),
+    );
+    const matches = comparisonResults.filter(result => result.matches).map(result => result.candidate);
 
     if (matches.length !== 1) {
       throw new UnauthorizedException('Email atau password salah');

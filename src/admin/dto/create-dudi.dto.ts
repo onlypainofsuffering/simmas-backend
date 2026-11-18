@@ -1,4 +1,4 @@
-import { IsBoolean, IsNotEmpty, IsString } from 'class-validator';
+import { IsBoolean, IsNotEmpty, IsOptional, IsString } from 'class-validator';
 
 export class CreateDudiDto {
   @IsString()
@@ -23,4 +23,8 @@ export class CreateDudiDto {
   @IsString()
   @IsNotEmpty()
   kontak!: string;
+
+  @IsOptional()
+  @IsBoolean()
+  isActive?: boolean;
 }

@@ -4,8 +4,8 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { Jurusan, Prisma, Role, Status, StatusAbsen } from '@prisma/client';
-import * as bcrypt from 'bcryptjs';
+import { Jurusan, Prisma, Role, Status } from '@prisma/client';
+import * as bcrypt from 'bcrypt';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateGuruDto } from './dto/create-guru.dto';
 import { CreateSiswaDto } from './dto/create-siswa.dto';
@@ -24,6 +24,11 @@ import { UpdatePenempatanDto } from './dto/update-penempatan.dto';
 
 const DEFAULT_REGISTER_PASSWORD = 'password123';
 const SCHOOL_EMAIL_DOMAIN = '@simmas.sch.id';
+let defaultPasswordHash: Promise<string> | undefined;
+
+function getDefaultPasswordHash() {
+  return (defaultPasswordHash ??= bcrypt.hash(DEFAULT_REGISTER_PASSWORD, 10));
+}
 
 function createSchoolEmail(name: string): string {
   return `${name.trim().toLowerCase().replace(/\s+/g, '')}${SCHOOL_EMAIL_DOMAIN}`;
@@ -83,7 +88,7 @@ export class AdminService {
 
     try {
       const kelas = await this.prisma.kelas.create({
-        data: { nama, jurusan: dto.jurusan },
+        data: { nama, jurusan: dto.jurusan, isActive: dto.isActive ?? true },
       });
       return { message: 'Kelas berhasil ditambahkan', data: kelas };
     } catch (error) {
@@ -114,6 +119,7 @@ export class AdminService {
           data: {
             ...(nama && { nama }),
             ...(dto.jurusan !== undefined && { jurusan: dto.jurusan }),
+            ...(dto.isActive !== undefined && { isActive: dto.isActive }),
           },
         });
         if (nama && nama !== kelas.nama) {
@@ -153,36 +159,60 @@ export class AdminService {
   }
 
   async getMonitoringSiswa(kelas?: string) {
-    const siswaList = await this.prisma.siswa.findMany({
-      where: kelas ? { kelas } : undefined,
-      include: {
-        pengajuan: {
-          include: {
-            dudi: true,
-            guruPembimbing: true,
+    const siswaWhere = kelas ? { kelas } : undefined;
+    const [siswaList, absenGroups, jurnalGroups] = await Promise.all([
+      this.prisma.siswa.findMany({
+        where: siswaWhere,
+        select: {
+          id: true,
+          nama: true,
+          nis: true,
+          kelas: true,
+          status: true,
+          pengajuan: {
+            where: { status: Status.DISETUJUI },
+            orderBy: { updatedAt: 'desc' },
+            take: 1,
+            select: {
+              dudi: {
+                select: { id: true, nama_perusahaan: true },
+              },
+              guruPembimbing: {
+                select: { id: true, namalengkap: true },
+              },
+            },
           },
         },
-        absen: true,
-        jurnal: true,
-      },
-      orderBy: { nama: 'asc' },
-    });
+        orderBy: { nama: 'asc' },
+      }),
+      this.prisma.absenSiswa.groupBy({
+        by: ['siswaId', 'statusAbsen'],
+        where: kelas ? { siswa: { kelas } } : undefined,
+        _count: { _all: true },
+      }),
+      this.prisma.jurnalSiswa.groupBy({
+        by: ['siswaId'],
+        where: kelas ? { siswa: { kelas } } : undefined,
+        _count: { _all: true },
+      }),
+    ]);
 
-    const result = siswaList.map((s) => {
-      // Ambil pengajuan yang disetujui (tempat magang dan pembimbing aktif)
-      const penempatanAktif = s.pengajuan.find((p) => p.status === Status.DISETUJUI) || s.pengajuan[0];
-
-      let hadir = 0;
-      let sakit = 0;
-      let izin = 0;
-      let alpha = 0;
-
-      for (const a of s.absen) {
-        if (a.statusAbsen === StatusAbsen.HADIR) hadir++;
-        else if (a.statusAbsen === StatusAbsen.SAKIT) sakit++;
-        else if (a.statusAbsen === StatusAbsen.IZIN) izin++;
-        else if (a.statusAbsen === StatusAbsen.ALPHA) alpha++;
+    const emptyCounts = () => ({ HADIR: 0, SAKIT: 0, IZIN: 0, ALPHA: 0 });
+    const absenMap = new Map<number, ReturnType<typeof emptyCounts>>();
+    for (const group of absenGroups) {
+      const counts = absenMap.get(group.siswaId) ?? emptyCounts();
+      const key = String(group.statusAbsen);
+      if (key in counts) {
+        counts[key] += group._count._all;
       }
+      absenMap.set(group.siswaId, counts);
+    }
+    const jurnalMap = new Map(jurnalGroups.map(group => [group.siswaId, group._count._all]));
+
+    const result = siswaList.map(s => {
+      const penempatanAktif = s.pengajuan[0];
+      const counts = absenMap.get(s.id) ?? emptyCounts();
+      const { HADIR: hadir, SAKIT: sakit, IZIN: izin, ALPHA: alpha } = counts;
 
       let currentStatus = s.status;
       if (alpha >= 3) {
@@ -206,7 +236,7 @@ export class AdminService {
           alpha,
           format: `H:${hadir}, S:${sakit}, I:${izin}, A:${alpha}`,
         },
-        jumlah_jurnal: s.jurnal.length,
+        jumlah_jurnal: jurnalMap.get(s.id) ?? 0,
       };
     });
 
@@ -222,7 +252,9 @@ export class AdminService {
         guru: {
           select: { id: true, namalengkap: true, nip: true, jurusan: true },
         },
-        dudi: true,
+        dudi: {
+          select: { id: true, nama_perusahaan: true },
+        },
       },
       orderBy: { tanggalKunjungan: 'desc' },
     });
@@ -252,11 +284,13 @@ export class AdminService {
       jurusan: Jurusan;
       role: Role;
       status: Status;
+      isActive: boolean;
       createdAt: Date;
     }>
   > {
     try {
       const email = createSchoolEmail(dto.namalengkap);
+      const isActive = dto.isActive ?? false;
       const guru = await this.prisma.guru.create({
         data: {
           namalengkap: dto.namalengkap,
@@ -264,9 +298,10 @@ export class AdminService {
           nip: dto.nip,
           alamat: dto.alamat,
           jurusan: dto.jurusan,
-          password: await bcrypt.hash(DEFAULT_REGISTER_PASSWORD, 10),
+          password: await getDefaultPasswordHash(),
           role: Role.GURU,
-          status: Status.NONAKTIF,
+          status: isActive ? Status.AKTIF : Status.NONAKTIF,
+          isActive,
         },
         select: {
           id: true,
@@ -277,6 +312,7 @@ export class AdminService {
           jurusan: true,
           role: true,
           status: true,
+          isActive: true,
           createdAt: true,
         },
       });
@@ -311,6 +347,7 @@ export class AdminService {
       kelas: string;
       role: Role;
       status: Status;
+      isActive: boolean;
       createdAt: Date;
     }>
   > {
@@ -323,9 +360,10 @@ export class AdminService {
           email,
           nis: dto.nis,
           ...kelasRef,
-          password: await bcrypt.hash(DEFAULT_REGISTER_PASSWORD, 10),
+          password: await getDefaultPasswordHash(),
           role: Role.SISWA,
           status: Status.BELUM_MAGANG,
+          isActive: dto.isActive ?? true,
         },
         select: {
           id: true,
@@ -335,6 +373,7 @@ export class AdminService {
           kelas: true,
           role: true,
           status: true,
+          isActive: true,
           createdAt: true,
         },
       });
@@ -370,6 +409,7 @@ export class AdminService {
       direktur: string;
       kontak: string;
       status: Status;
+      isActive: boolean;
       createdAt: Date;
     }>
   > {
@@ -381,6 +421,7 @@ export class AdminService {
         kuota_peserta: dto.kuota_peserta,
         direktur: dto.direktur,
         kontak: dto.kontak,
+        isActive: dto.isActive ?? true,
       },
       select: {
         id: true,
@@ -391,6 +432,7 @@ export class AdminService {
         direktur: true,
         kontak: true,
         status: true,
+        isActive: true,
         createdAt: true,
       },
     });
@@ -420,6 +462,7 @@ export class AdminService {
         ...(dto.kuota_peserta !== undefined && { kuota_peserta: dto.kuota_peserta }),
         ...(dto.direktur && { direktur: dto.direktur }),
         ...(dto.kontak && { kontak: dto.kontak }),
+        ...(dto.isActive !== undefined && { isActive: dto.isActive }),
       },
     });
 
@@ -448,6 +491,7 @@ export class AdminService {
         jurusan: true,
         role: true,
         status: true,
+        isActive: true,
         createdAt: true,
       },
       orderBy: { createdAt: 'desc' },
@@ -470,10 +514,33 @@ export class AdminService {
           },
         }),
       },
-      include: {
+      select: {
+        id: true,
+        nama: true,
+        email: true,
+        nis: true,
+        kelas: true,
+        kelasId: true,
+        role: true,
+        status: true,
+        isActive: true,
+        createdAt: true,
+        updatedAt: true,
         pengajuan: {
-          include: {
-            dudi: true,
+          where: { status: Status.DISETUJUI },
+          orderBy: { updatedAt: 'desc' },
+          take: 1,
+          select: {
+            id: true,
+            posisi: true,
+            status: true,
+            dudi: {
+              select: {
+                id: true,
+                nama_perusahaan: true,
+                status: true,
+              },
+            },
             guruPembimbing: {
               select: {
                 id: true,
@@ -510,7 +577,14 @@ export class AdminService {
             status: true,
           },
         },
-        dudi: true,
+        dudi: {
+          select: {
+            id: true,
+            nama_perusahaan: true,
+            bidang_usaha: true,
+            status: true,
+          },
+        },
         guruPembimbing: {
           select: {
             id: true,
@@ -773,6 +847,10 @@ export class AdminService {
           ...(dto.nip && { nip: dto.nip }),
           ...(dto.alamat && { alamat: dto.alamat }),
           ...(dto.jurusan && { jurusan: dto.jurusan }),
+          ...(dto.isActive !== undefined && {
+            isActive: dto.isActive,
+            status: dto.isActive ? Status.AKTIF : Status.NONAKTIF,
+          }),
         },
         select: {
           id: true,
@@ -782,6 +860,7 @@ export class AdminService {
           jurusan: true,
           role: true,
           status: true,
+          isActive: true,
           createdAt: true,
         },
       });
@@ -820,6 +899,7 @@ export class AdminService {
           ...(dto.namalengkap !== undefined && { nama: dto.namalengkap }),
           ...(dto.nis !== undefined && { nis: dto.nis }),
           ...(kelasRef && kelasRef),
+          ...(dto.isActive !== undefined && { isActive: dto.isActive }),
         },
         select: {
           id: true,
@@ -828,6 +908,7 @@ export class AdminService {
           kelas: true,
           role: true,
           status: true,
+          isActive: true,
           createdAt: true,
         },
       });
@@ -883,7 +964,10 @@ export class AdminService {
 
     const updated = await this.prisma.guru.update({
       where: { id },
-      data: { status: dto.status },
+      data: {
+        status: dto.status,
+        isActive: dto.status === Status.AKTIF,
+      },
       select: {
         id: true,
         namalengkap: true,
@@ -892,6 +976,7 @@ export class AdminService {
         jurusan: true,
         role: true,
         status: true,
+        isActive: true,
         createdAt: true,
       },
     });
@@ -913,6 +998,7 @@ export class AdminService {
         kelas: true,
         role: true,
         status: true,
+        isActive: true,
         createdAt: true,
       },
     });

@@ -1,5 +1,5 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { IsInt, IsOptional, IsPositive, IsString } from 'class-validator';
+import { IsBoolean, IsInt, IsOptional, IsPositive, IsString } from 'class-validator';
 
 export class UpdateSiswaDto {
   @ApiPropertyOptional({
@@ -25,4 +25,9 @@ export class UpdateSiswaDto {
   @IsString()
   @IsOptional()
   kelas?: string;
+
+  @ApiPropertyOptional({ example: true })
+  @IsBoolean()
+  @IsOptional()
+  isActive?: boolean;
 }

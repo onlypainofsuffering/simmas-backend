@@ -1,5 +1,5 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { IsEnum, IsOptional, IsString } from 'class-validator';
+import { IsBoolean, IsEnum, IsOptional, IsString } from 'class-validator';
 import { Jurusan } from '@prisma/client';
 
 export class UpdateGuruDto {
@@ -22,4 +22,9 @@ export class UpdateGuruDto {
   @IsEnum(Jurusan, { message: 'Jurusan harus RPL, TKJ, atau MM' })
   @IsOptional()
   jurusan?: Jurusan;
+
+  @ApiPropertyOptional({ example: true })
+  @IsBoolean()
+  @IsOptional()
+  isActive?: boolean;
 }

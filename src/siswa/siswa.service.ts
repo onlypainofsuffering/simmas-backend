@@ -4,7 +4,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { Status, StatusAbsen } from '@prisma/client';
-import * as bcrypt from 'bcryptjs';
+import * as bcrypt from 'bcrypt';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateDudiDto } from '../admin/dto/create-dudi.dto';
 import { CloudinaryService } from '../common/cloudinary.service';
@@ -25,57 +25,52 @@ export class SiswaService {
   }
 
   async getDashboardSiswa(siswaId: number) {
-    const siswa = await this.prisma.siswa.findUnique({
-      where: { id: siswaId },
-      select: { id: true, nama: true, email: true, nis: true, kelas: true, status: true },
-    });
+    const [siswa, listDudi, pengajuan, jurnal, riwayatAbsen] = await Promise.all([
+      this.prisma.siswa.findUnique({
+        where: { id: siswaId },
+        select: { id: true, nama: true, email: true, nis: true, kelas: true, status: true },
+      }),
+      this.prisma.mitra.findMany({
+        where: { status: Status.TERVERIFIKASI },
+        orderBy: { createdAt: 'desc' },
+      }),
+      this.prisma.pengajuanMagang.findMany({
+        where: { siswaId },
+        include: {
+          dudi: true,
+          guruPembimbing: {
+            select: {
+              id: true,
+              namalengkap: true,
+              email: true,
+              jurusan: true,
+            },
+          },
+        },
+        orderBy: { createdAt: 'desc' },
+      }),
+      this.prisma.jurnalSiswa.findMany({
+        where: { siswaId },
+        include: {
+          guruPembimbing: {
+            select: { id: true, namalengkap: true, email: true, jurusan: true },
+          },
+        },
+        orderBy: { tanggalPelaksana: 'desc' },
+      }),
+      this.prisma.absenSiswa.findMany({
+        where: { siswaId },
+        orderBy: { tanggal: 'desc' },
+      }),
+    ]);
 
     if (!siswa) {
       throw new NotFoundException('Siswa tidak ditemukan');
     }
 
-    const listDudi = await this.prisma.mitra.findMany({
-      where: { status: Status.TERVERIFIKASI },
-      orderBy: { createdAt: 'desc' },
-    });
-
-    const pengajuan = await this.prisma.pengajuanMagang.findMany({
-      where: { siswaId },
-      include: {
-        dudi: true,
-        guruPembimbing: {
-          select: {
-            id: true,
-            namalengkap: true,
-            email: true,
-            jurusan: true,
-          },
-        },
-      },
-      orderBy: { createdAt: 'desc' },
-    });
-
-    const jurnal = await this.prisma.jurnalSiswa.findMany({
-      where: { siswaId },
-      include: {
-        guruPembimbing: {
-          select: { id: true, namalengkap: true, email: true, jurusan: true },
-        },
-      },
-      orderBy: { tanggalPelaksana: 'desc' },
-    });
-
-    const absenHariIni = await this.prisma.absenSiswa.findFirst({
-      where: {
-        siswaId,
-        tanggal: this.getTodayDateOnly(),
-      },
-    });
-
-    const riwayatAbsen = await this.prisma.absenSiswa.findMany({
-      where: { siswaId },
-      orderBy: { tanggal: 'desc' },
-    });
+    const today = this.getTodayDateOnly().getTime();
+    const absenHariIni =
+      riwayatAbsen.find(item => new Date(item.tanggal).getTime() === today) ?? null;
 
     return {
       message: 'Berhasil memuat dashboard siswa',
@@ -407,6 +402,7 @@ export class SiswaService {
       kuota_peserta: boolean;
       kontak: string;
       status: Status;
+      isActive: boolean;
       createdAt: Date;
     }>
   > {
@@ -418,6 +414,7 @@ export class SiswaService {
         kuota_peserta: dto.kuota_peserta,
         direktur: dto.direktur,
         kontak: dto.kontak,
+        isActive: dto.isActive ?? true,
       },
       select: {
         id: true,
@@ -427,6 +424,7 @@ export class SiswaService {
         kuota_peserta: true,
         kontak: true,
         status: true,
+        isActive: true,
         createdAt: true,
       },
     });

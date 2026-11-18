@@ -31,6 +31,7 @@ model Guru {
   jurusan            Jurusan
   role               Role              @default(GURU)
   status             Status            @default(NONAKTIF)
+  isActive           Boolean           @default(true)
   createdAt          DateTime          @default(now())
   updatedAt          DateTime          @updatedAt
   pengajuanDibimbing PengajuanMagang[]
@@ -38,6 +39,10 @@ model Guru {
   kunjungan          KunjunganGuru[]
   penilaianPkl       PenilaianPkl[]
 
+  @@index([status])
+  @@index([isActive])
+  @@index([jurusan])
+  @@index([createdAt])
   @@map("guru")
 }
 
@@ -45,10 +50,12 @@ model Kelas {
   id        Int      @id @default(autoincrement())
   nama      String   @unique
   jurusan   Jurusan?
+  isActive  Boolean  @default(true)
   siswa     Siswa[]
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  @@index([isActive])
   @@map("kelas")
 }
 
@@ -63,6 +70,7 @@ model Siswa {
   kelasRef  Kelas             @relation(fields: [kelasId], references: [id], onDelete: Restrict)
   role      Role              @default(SISWA)
   status    Status            @default(BELUM_MAGANG)
+  isActive  Boolean           @default(true)
   createdAt DateTime          @default(now())
   updatedAt DateTime          @updatedAt
   pengajuan PengajuanMagang[]
@@ -71,6 +79,10 @@ model Siswa {
   penilaian PenilaianPkl?
 
   @@index([kelasId])
+  @@index([status])
+  @@index([kelas])
+  @@index([createdAt])
+  @@index([isActive])
   @@map("siswa")
 }
 
@@ -102,11 +114,15 @@ model mitra {
   direktur         String
   kontak           String
   status           Status            @default(MENUNGGU_VALIDASI)
+  isActive         Boolean           @default(true)
   createdAt        DateTime          @default(now())
   updatedAt        DateTime          @updatedAt
   pengajuan        PengajuanMagang[]
   kunjungan        KunjunganGuru[]
 
+  @@index([status])
+  @@index([createdAt])
+  @@index([isActive])
   @@map("dudi")
 }
 
@@ -124,6 +140,7 @@ model KunjunganGuru {
 
   @@index([guruId])
   @@index([dudiId])
+  @@index([tanggalKunjungan])
   @@map("kunjungan_guru")
 }
 
@@ -141,6 +158,9 @@ model PengajuanMagang {
   updatedAt        DateTime @updatedAt
 
   @@index([guruPembimbingId])
+  @@index([siswaId, status])
+  @@index([dudiId, status])
+  @@index([status, createdAt])
   @@map("pengajuan_magang")
 }
 
@@ -162,6 +182,7 @@ model JurnalSiswa {
 
   @@index([siswaId])
   @@index([guruPembimbingId])
+  @@index([tanggalPelaksana])
   @@map("jurnal_siswa")
 }
 
