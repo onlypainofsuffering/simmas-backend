@@ -246,6 +246,36 @@ export class AdminService {
     };
   }
 
+  async getMonitoringAbsensiSiswa(id: number) {
+    const siswa = await this.prisma.siswa.findUnique({
+      where: { id },
+      select: { id: true, nama: true, nis: true, kelas: true },
+    });
+    if (!siswa) {
+      throw new NotFoundException('Siswa tidak ditemukan');
+    }
+
+    const riwayatAbsensi = await this.prisma.absenSiswa.findMany({
+      where: { siswaId: id },
+      orderBy: { tanggal: 'desc' },
+      select: {
+        id: true,
+        tanggal: true,
+        statusAbsen: true,
+        jamMasuk: true,
+        jamKeluar: true,
+        keterangan: true,
+        fotoMasukUrl: true,
+        fotoKeluarUrl: true,
+      },
+    });
+
+    return {
+      message: 'Berhasil memuat riwayat absensi siswa',
+      data: { siswa, riwayat_absensi: riwayatAbsensi },
+    };
+  }
+
   async getMonitoringKunjungan() {
     const kunjunganList = await this.prisma.kunjunganGuru.findMany({
       include: {

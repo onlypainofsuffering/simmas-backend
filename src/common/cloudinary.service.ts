@@ -24,4 +24,25 @@ export class CloudinaryService {
       upload.end(file.buffer);
     });
   }
+
+  async uploadAvatar(file: Express.Multer.File): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const upload = cloudinary.uploader.upload_stream(
+        {
+          folder: 'simmas_profil',
+          resource_type: 'image',
+          format: 'webp',
+          quality: 'auto:good',
+          width: 512,
+          height: 512,
+          crop: 'limit',
+        },
+        (error: UploadApiErrorResponse, result: UploadApiResponse) => {
+          if (error) return reject(error);
+          resolve(result.secure_url);
+        },
+      );
+      upload.end(file.buffer);
+    });
+  }
 }

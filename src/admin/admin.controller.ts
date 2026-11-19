@@ -57,6 +57,18 @@ export class AdminController {
     return this.adminService.getMonitoringSiswa(kelas);
   }
 
+  @Get('admin/monitoring/siswa/:id/absensi')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.ADMIN, Role.SUPER_ADMIN)
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary:
+      'Admin melihat riwayat absensi siswa: tanggal, status, jam masuk, jam pulang, dan keterangan',
+  })
+  getMonitoringAbsensiSiswa(@Param('id', ParseIntPipe) id: number) {
+    return this.adminService.getMonitoringAbsensiSiswa(id);
+  }
+
   @Get('admin/monitoring/kunjungan')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(Role.ADMIN, Role.SUPER_ADMIN)
